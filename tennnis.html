@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tennis Session Organiser</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #eef7ee;
+      color: #1a2e1a;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #2d6a2d, #1a4a1a);
+      color: white;
+      padding: 18px 24px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { font-size: 0.83rem; opacity: 0.75; margin-top: 3px; }
+
+    .container { max-width: 760px; margin: 0 auto; padding: 20px 16px; }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #2d6a2d;
+      margin-bottom: 14px;
+    }
+
+    input[type="text"], input[type="number"] {
+      border: 1.5px solid #cce5cc;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+      background: white;
+    }
+    input[type="text"]:focus, input[type="number"]:focus { border-color: #2d6a2d; }
+
+    .courts-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .courts-row label { font-size: 0.9rem; font-weight: 500; white-space: nowrap; }
+    .courts-row input[type="number"] { width: 72px; }
+    #court-hint { font-size: 0.82rem; color: #555; margin-top: 8px; line-height: 1.45; }
+
+    #player-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .player-row { display: flex; gap: 8px; align-items: center; }
+    .player-row input[type="text"] { flex: 1; min-width: 0; }
+
+    .gender-btn {
+      padding: 9px 13px;
+      border-radius: 8px;
+      border: 1.5px solid #cce5cc;
+      background: white;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 700;
+      min-width: 44px;
+      text-align: center;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .gender-btn.male   { background: #dbeeff; border-color: #90bce8; color: #1a4f8a; }
+    .gender-btn.female { background: #fde8f0; border-color: #e8a0c0; color: #7a1a4a; }
+
+    .remove-btn {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      border: none;
+      background: #fff0f0;
+      color: #c00;
+      cursor: pointer;
+      font-size: 0.85rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .remove-btn:hover { background: #ffd0d0; }
+
+    .add-btn {
+      margin-top: 10px;
+      padding: 9px 16px;
+      border: 1.5px dashed #4a9a4a;
+      border-radius: 8px;
+      background: transparent;
+      color: #2d6a2d;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .add-btn:hover { background: #f0f7f0; }
+
+    .btn-primary {
+      display: block; width: 100%;
+      padding: 13px;
+      background: #2d6a2d;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover  { background: #1e4d1e; }
+    .btn-primary:active { background: #133513; }
+
+    .btn-outline {
+      padding: 9px 18px;
+      background: white;
+      color: #2d6a2d;
+      border: 1.5px solid #2d6a2d;
+      border-radius: 9px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-outline:hover { background: #f0f7f0; }
+
+    .alert-warn {
+      background: #fffbe6; border: 1px solid #f0c040;
+      border-radius: 8px; padding: 9px 13px;
+      font-size: 0.82rem; color: #6a4c00; margin-top: 10px;
+    }
+    .alert-err {
+      background: #fff0f0; border: 1px solid #f0a0a0;
+      border-radius: 8px; padding: 9px 13px;
+      font-size: 0.82rem; color: #a00; margin-top: 10px;
+    }
+
+    .session-topbar {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; gap: 12px; flex-wrap: wrap;
+    }
+    .session-stats { display: flex; gap: 20px; flex-wrap: wrap; }
+    .stat { font-size: 0.8rem; color: #666; }
+    .stat strong { color: #1a2e1a; font-size: 0.98rem; display: block; }
+
+    .round-card {
+      border-radius: 12px; overflow: hidden;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    .round-header {
+      background: #2d6a2d; color: white;
+      padding: 10px 16px;
+      font-weight: 700; font-size: 0.88rem; letter-spacing: 0.05em;
+    }
+    .round-body { background: white; padding: 14px; }
+
+    .court-block {
+      background: #f5faf5;
+      border-radius: 9px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .court-block:last-child { margin-bottom: 0; }
+
+    .court-label {
+      font-size: 0.73rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.09em;
+      color: #2d6a2d; margin-bottom: 8px;
+    }
+
+    .match-line {
+      display: flex; align-items: center;
+      gap: 5px; flex-wrap: wrap; row-gap: 6px;
+    }
+
+    .player-chip {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.84rem; font-weight: 500;
+    }
+    .player-chip.m { background: #dbeeff; color: #1a4f8a; }
+    .player-chip.f { background: #fde8f0; color: #7a1a4a; }
+
+    .amp { font-size: 0.76rem; color: #999; }
+    .vs  { font-size: 0.78rem; color: #bbb; font-weight: 700; padding: 0 3px; }
+
+    .pair-badge {
+      font-size: 0.7rem; font-weight: 700;
+      padding: 3px 8px; border-radius: 10px;
+    }
+    .badge-mixed  { background: #e6f5e6; color: #1a5a1a; }
+    .badge-same   { background: #f0f0f0; color: #666; }
+    .badge-repeat { background: #fff3cd; color: #7a5900; }
+
+    .sit-out-bar {
+      margin-top: 12px;
+      background: #f0f0f0; border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.82rem; color: #444;
+    }
+    .sit-out-bar strong { color: #222; }
+
+    @media print {
+      body { background: white; }
+      header, #setup-view, .no-print { display: none !important; }
+      .card { box-shadow: none; }
+      .round-card { box-shadow: none; break-inside: avoid; border: 1px solid #ccc; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🎾 Tennis Session Organiser</h1>
+  <p>Doubles round scheduler with sit-out rotation</p>
+</header>
+
+<div class="container">
+
+  <!-- SETUP -->
+  <div id="setup-view">
+
+    <div class="card">
+      <div class="card-title">Courts</div>
+      <div class="courts-row">
+        <label for="court-count">Number of courts</label>
+        <input type="number" id="court-count" value="4" min="1" max="30" oninput="refreshHints()">
+      </div>
+      <div id="court-hint"></div>
+      <div id="court-warn"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        Players <span id="player-count" style="font-weight:400;color:#888;text-transform:none;letter-spacing:0">(0)</span>
+      </div>
+      <div id="player-list"></div>
+      <button class="add-btn" onclick="addPlayerRow()">+ Add player</button>
+      <div id="player-warn"></div>
+    </div>
+
+    <div class="card" style="padding:14px">
+      <button class="btn-primary" onclick="startSession()">Start Session</button>
+      <div id="start-err" style="display:none" class="alert-err"></div>
+    </div>
+
+  </div>
+
+  <!-- SESSION -->
+  <div id="session-view" style="display:none">
+
+    <div class="card no-print">
+      <div class="session-topbar">
+        <div class="session-stats" id="session-stats"></div>
+        <button class="btn-outline" onclick="resetSession()">↩ Reset</button>
+      </div>
+    </div>
+
+    <div id="rounds-container"></div>
+
+    <div class="card no-print" style="padding:14px">
+      <button class="btn-primary" onclick="generateNextRound()">
+        Generate Round <span id="next-round-num">1</span>
+      </button>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────
+  let players    = [];  // [{name, gender:'M'|'W'}]
+  let numCourts  = 4;
+  let sitOutCnt  = [];  // [idx] → sit-out count
+  let partnerCnt = [];  // [i][j] → times paired together
+  let rounds     = [];
+
+  // ── Setup UI ──────────────────────────────────────────────────
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function addPlayerRow(name = '', gender = 'M') {
+    const list = document.getElementById('player-list');
+    const div  = document.createElement('div');
+    div.className = 'player-row';
+    div.innerHTML = `
+      <input type="text" placeholder="Name" value="${esc(name)}" oninput="onPlayerChange()">
+      <button class="gender-btn ${gender === 'M' ? 'male' : 'female'}"
+              onclick="toggleGender(this)">${gender}</button>
+      <button class="remove-btn" onclick="this.closest('.player-row').remove(); onPlayerChange()">✕</button>`;
+    list.appendChild(div);
+    onPlayerChange();
+  }
+
+  function toggleGender(btn) {
+    if (btn.textContent === 'M') { btn.textContent = 'W'; btn.className = 'gender-btn female'; }
+    else                         { btn.textContent = 'M'; btn.className = 'gender-btn male';   }
+  }
+
+  function getFilledPlayers() {
+    return Array.from(document.querySelectorAll('#player-list .player-row'))
+      .map(r => ({
+        name:   r.querySelector('input[type="text"]').value.trim(),
+        gender: r.querySelector('.gender-btn').textContent.trim()
+      }))
+      .filter(p => p.name !== '');
+  }
+
+  function onPlayerChange() {
+    document.getElementById('player-count').textContent = `(${getFilledPlayers().length})`;
+    refreshHints();
+  }
+
+  function refreshHints() {
+    const courts = parseInt(document.getElementById('court-count').value) || 0;
+    const n      = getFilledPlayers().length;
+    const hintEl = document.getElementById('court-hint');
+    const warnEl = document.getElementById('court-warn');
+
+    if (courts < 1) {
+      hintEl.textContent = '';
+      warnEl.innerHTML = '<div class="alert-err">Enter at least 1 court.</div>';
+      return;
+    }
+    warnEl.innerHTML = '';
+    if (n < 4) { hintEl.textContent = `${courts} court${courts > 1 ? 's' : ''}`; return; }
+
+    const actual  = Math.min(courts, Math.floor(n / 4));
+    const sitOuts = n - actual * 4;
+
+    hintEl.textContent = sitOuts === 0
+      ? `${actual} court${actual > 1 ? 's' : ''} — everyone plays every round`
+      : `${actual} court${actual > 1 ? 's' : ''} — ${sitOuts} player${sitOuts > 1 ? 's' : ''} sit${sitOuts === 1 ? 's' : ''} out per round`;
+
+    if (actual < courts)
+      warnEl.innerHTML = `<div class="alert-warn">Only ${n} players available — ${actual} of ${courts} courts can be used. Add more players or reduce the court count.</div>`;
+  }
+
+  function startSession() {
+    const courtVal = parseInt(document.getElementById('court-count').value);
+    const ps       = getFilledPlayers();
+    const errEl    = document.getElementById('start-err');
+
+    if (!courtVal || courtVal < 1) { errEl.textContent = 'Enter a valid number of courts.'; errEl.style.display = 'block'; return; }
+    if (ps.length < 4)             { errEl.textContent = 'Add at least 4 players.';          errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+
+    players   = ps;
+    numCourts = Math.min(courtVal, Math.floor(ps.length / 4));
+    const n   = ps.length;
+
+    sitOutCnt  = new Array(n).fill(0);
+    partnerCnt = Array.from({length: n}, () => new Array(n).fill(0));
+    rounds     = [];
+
+    const men   = ps.filter(p => p.gender === 'M').length;
+    const women = ps.filter(p => p.gender === 'W').length;
+    const souts = n - numCourts * 4;
+
+    document.getElementById('session-stats').innerHTML = `
+      <div class="stat"><strong>${n}</strong>Players</div>
+      <div class="stat"><strong>${men}M / ${women}W</strong>Split</div>
+      <div class="stat"><strong>${numCourts}</strong>Courts</div>
+      <div class="stat"><strong>${souts > 0 ? souts : 'None'}</strong>Sit out / round</div>`;
+
+    document.getElementById('rounds-container').innerHTML = '';
+    document.getElementById('next-round-num').textContent = '1';
+    document.getElementById('setup-view').style.display   = 'none';
+    document.getElementById('session-view').style.display = 'block';
+  }
+
+  function resetSession() {
+    document.getElementById('session-view').style.display = 'none';
+    document.getElementById('setup-view').style.display   = 'block';
+    document.getElementById('rounds-container').innerHTML = '';
+    players = []; rounds = [];
+  }
+
+  // ── Algorithm ─────────────────────────────────────────────────
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function selectSitOuts(numSit) {
+    if (numSit <= 0) return [];
+    const order = Array.from({length: players.length}, (_, i) => i);
+    order.sort((a, b) => {
+      const d = sitOutCnt[a] - sitOutCnt[b];
+      return d !== 0 ? d : (Math.random() < 0.5 ? -1 : 1);
+    });
+    return order.slice(0, numSit);
+  }
+
+  function pairScore(a, b) {
+    let s = players[a].gender !== players[b].gender ? 10 : 0;
+    s -= 5 * partnerCnt[a][b];
+    return s;
+  }
+
+  function greedyTry(ids) {
+    const pool = shuffle([...ids]);
+    const out  = [];
+    while (pool.length >= 2) {
+      const a = pool.splice(0, 1)[0];
+      let best = -Infinity, bi = 0;
+      for (let i = 0; i < pool.length; i++) {
+        const s = pairScore(a, pool[i]);
+        if (s > best) { best = s; bi = i; }
+      }
+      out.push([a, pool.splice(bi, 1)[0]]);
+    }
+    return out;
+  }
+
+  function bestPairing(ids) {
+    let best = null, bestScore = -Infinity;
+    for (let t = 0; t < 40; t++) {
+      const p = greedyTry(ids);
+      const s = p.reduce((acc, [a, b]) => acc + pairScore(a, b), 0);
+      if (s > bestScore) { bestScore = s; best = p; }
+    }
+    return best;
+  }
+
+  function generateNextRound() {
+    const n      = players.length;
+    const numSit = n - numCourts * 4;
+    const sitIds = selectSitOuts(numSit);
+    const sitSet = new Set(sitIds);
+    const active = Array.from({length: n}, (_, i) => i).filter(i => !sitSet.has(i));
+
+    const pairs = bestPairing(active);
+
+    // Commit counts before rendering (so repeat detection works at render time)
+    sitIds.forEach(id => sitOutCnt[id]++);
+    pairs.forEach(([a, b]) => { partnerCnt[a][b]++; partnerCnt[b][a]++; });
+
+    // Group shuffled pairs into courts (2 pairs per court)
+    const shuffled  = shuffle([...pairs]);
+    const courtsArr = [];
+    for (let i = 0; i < shuffled.length; i += 2) courtsArr.push([shuffled[i], shuffled[i + 1]]);
+
+    const round = { number: rounds.length + 1, courts: courtsArr, sitOuts: sitIds };
+    rounds.push(round);
+    renderRound(round);
+    document.getElementById('next-round-num').textContent = rounds.length + 1;
+  }
+
+  // ── Render ────────────────────────────────────────────────────
+
+  function chip(id) {
+    const p = players[id];
+    return `<span class="player-chip ${p.gender === 'M' ? 'm' : 'f'}">${esc(p.name)}</span>`;
+  }
+
+  function badge(a, b) {
+    if (partnerCnt[a][b] > 1)                            return '<span class="pair-badge badge-repeat">⚠ Repeat</span>';
+    if (players[a].gender !== players[b].gender)          return '<span class="pair-badge badge-mixed">Mixed</span>';
+    return '<span class="pair-badge badge-same">Same sex</span>';
+  }
+
+  function renderRound(round) {
+    let courtsHtml = '';
+    round.courts.forEach(([pA, pB], ci) => {
+      const [a1, a2] = pA, [b1, b2] = pB;
+      courtsHtml += `
+        <div class="court-block">
+          <div class="court-label">Court ${ci + 1}</div>
+          <div class="match-line">
+            ${chip(a1)} <span class="amp">&amp;</span> ${chip(a2)} ${badge(a1, a2)}
+            <span class="vs">vs</span>
+            ${chip(b1)} <span class="amp">&amp;</span> ${chip(b2)} ${badge(b1, b2)}
+          </div>
+        </div>`;
+    });
+
+    const sitHtml = round.sitOuts.length
+      ? `<div class="sit-out-bar"><strong>Sitting out:</strong> ${round.sitOuts.map(id => esc(players[id].name)).join(', ')}</div>`
+      : '';
+
+    const div = document.createElement('div');
+    div.className = 'round-card';
+    div.innerHTML = `
+      <div class="round-header">ROUND ${round.number}</div>
+      <div class="round-body">${courtsHtml}${sitHtml}</div>`;
+
+    const c = document.getElementById('rounds-container');
+    c.insertBefore(div, c.firstChild);
+  }
+
+  // ── Init ──────────────────────────────────────────────────────
+  (function () {
+    for (let i = 0; i < 8; i++) addPlayerRow();
+    refreshHints();
+  })();
+</script>
+</body>
+</html>
