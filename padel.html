@@ -124,6 +124,21 @@
     .btn-primary:hover  { background: #124090; }
     .btn-primary:active { background: #0d2f70; }
 
+    .btn-secondary {
+      display: block; width: 100%;
+      padding: 13px;
+      background: white;
+      color: #1a52a8;
+      border: 1.5px solid #1a52a8;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-secondary:hover { background: #f0f4ff; }
+
     .btn-outline {
       padding: 9px 18px;
       background: white;
@@ -216,6 +231,46 @@
     }
     .sit-out-bar strong { color: #222; }
 
+    /* ── Manual builder ── */
+    .manual-court {
+      background: #f4f7ff;
+      border-radius: 9px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .manual-court:last-child { margin-bottom: 0; }
+
+    .manual-match {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap; row-gap: 8px;
+    }
+    .manual-team {
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+    }
+    .manual-team select {
+      border: 1.5px solid #c5d4f0;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.84rem;
+      font-family: inherit;
+      background: white;
+      outline: none;
+      cursor: pointer;
+      min-width: 120px;
+      transition: border-color 0.15s;
+    }
+    .manual-team select:focus { border-color: #1a52a8; }
+
+    .manual-sit-out-info {
+      margin-top: 12px;
+      background: #f0f0f0; border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.82rem; color: #444;
+      line-height: 1.5;
+    }
+    .manual-sit-out-info strong { color: #222; }
+
+    .round1-choice { display: flex; gap: 10px; flex-direction: column; }
+
     @media print {
       body { background: white; }
       header, #setup-view, .no-print { display: none !important; }
@@ -228,7 +283,7 @@
 
 <header>
   <h1>🎾 Padel Club Session Organiser</h1>
-  <p>Doubles organiser, with sit out and mixed pairs </p>
+  <p>Doubles organiser, with sit out and mixed pairs</p>
 </header>
 
 <div class="container">
@@ -274,10 +329,22 @@
 
     <div id="rounds-container"></div>
 
-    <div class="card no-print" style="padding:14px">
-      <button class="btn-primary" onclick="generateNextRound()">
-        Generate Round <span id="next-round-num">1</span>
-      </button>
+    <!-- Manual Round Builder -->
+    <div id="manual-builder" style="display:none">
+      <div class="card">
+        <div class="card-title">Build Round 1 — Choose your matchups</div>
+        <div id="manual-courts"></div>
+        <div id="manual-sit-out"></div>
+        <div id="manual-err" style="display:none" class="alert-err"></div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn-primary" style="flex:1" onclick="confirmManualRound()">Confirm Round 1</button>
+          <button class="btn-outline" onclick="cancelManualBuilder()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Round action buttons -->
+    <div id="round-actions" class="card no-print" style="padding:14px">
     </div>
 
   </div>
@@ -286,11 +353,12 @@
 
 <script>
   // ── State ──────────────────────────────────────────────────────
-  let players    = [];  // [{name, gender:'M'|'W'}]
-  let numCourts  = 3;
-  let sitOutCnt  = [];  // [idx] → sit-out count
-  let partnerCnt = [];  // [i][j] → times paired together
-  let rounds     = [];
+  let players     = [];  // [{name, gender:'M'|'W'}]
+  let numCourts   = 3;
+  let sitOutCnt   = [];  // [idx] → sit-out count
+  let partnerCnt  = [];  // [i][j] → times paired together
+  let opponentCnt = [];  // [i][j] → times faced as opponents
+  let rounds      = [];
 
   // ── Setup UI ──────────────────────────────────────────────────
 
@@ -380,9 +448,10 @@
     numCourts = Math.min(courtVal, Math.floor(ps.length / 4));
     const n   = ps.length;
 
-    sitOutCnt  = new Array(n).fill(0);
-    partnerCnt = Array.from({length: n}, () => new Array(n).fill(0));
-    rounds     = [];
+    sitOutCnt   = new Array(n).fill(0);
+    partnerCnt  = Array.from({length: n}, () => new Array(n).fill(0));
+    opponentCnt = Array.from({length: n}, () => new Array(n).fill(0));
+    rounds      = [];
 
     const men   = ps.filter(p => p.gender === 'M').length;
     const women = ps.filter(p => p.gender === 'W').length;
@@ -395,16 +464,169 @@
       <div class="stat"><strong>${souts > 0 ? souts : 'None'}</strong>Sit out / round</div>`;
 
     document.getElementById('rounds-container').innerHTML = '';
-    document.getElementById('next-round-num').textContent = '1';
+    document.getElementById('manual-builder').style.display = 'none';
     document.getElementById('setup-view').style.display   = 'none';
     document.getElementById('session-view').style.display = 'block';
+    updateRoundActions();
   }
 
   function resetSession() {
     document.getElementById('session-view').style.display = 'none';
     document.getElementById('setup-view').style.display   = 'block';
     document.getElementById('rounds-container').innerHTML = '';
-    players = []; rounds = [];
+    document.getElementById('manual-builder').style.display = 'none';
+    players = []; rounds = []; opponentCnt = [];
+  }
+
+  // ── Round action buttons ──────────────────────────────────────
+
+  function updateRoundActions() {
+    const el = document.getElementById('round-actions');
+    if (rounds.length === 0) {
+      el.innerHTML = `
+        <div class="round1-choice">
+          <button class="btn-primary" onclick="generateNextRound()">
+            Auto-generate Round 1
+          </button>
+          <button class="btn-secondary" onclick="showManualBuilder()">
+            ✏️ Build Round 1 manually
+          </button>
+        </div>`;
+    } else {
+      el.innerHTML = `
+        <button class="btn-primary" onclick="generateNextRound()">
+          Generate Round <span>${rounds.length + 1}</span>
+        </button>`;
+    }
+  }
+
+  // ── Manual Round Builder ──────────────────────────────────────
+
+  function showManualBuilder() {
+    document.getElementById('round-actions').style.display = 'none';
+    const builder = document.getElementById('manual-builder');
+    builder.style.display = 'block';
+    document.getElementById('manual-err').style.display = 'none';
+    buildManualCourts();
+  }
+
+  function cancelManualBuilder() {
+    document.getElementById('manual-builder').style.display = 'none';
+    document.getElementById('round-actions').style.display = 'block';
+  }
+
+  function buildManualCourts() {
+    const container = document.getElementById('manual-courts');
+    let html = '';
+    for (let c = 0; c < numCourts; c++) {
+      html += `
+        <div class="manual-court">
+          <div class="court-label">Court ${c + 1}</div>
+          <div class="manual-match">
+            <div class="manual-team">
+              ${playerSelect(c, 0)} <span class="amp">&amp;</span> ${playerSelect(c, 1)}
+            </div>
+            <span class="vs">vs</span>
+            <div class="manual-team">
+              ${playerSelect(c, 2)} <span class="amp">&amp;</span> ${playerSelect(c, 3)}
+            </div>
+          </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+
+    container.querySelectorAll('select').forEach(sel => {
+      sel.addEventListener('change', refreshManualSitOut);
+    });
+    refreshManualSitOut();
+  }
+
+  function playerSelect(court, slot) {
+    let opts = '<option value="">— Select —</option>';
+    players.forEach((p, i) => {
+      const label = esc(p.name) + ' (' + p.gender + ')';
+      opts += `<option value="${i}">${label}</option>`;
+    });
+    return `<select data-court="${court}" data-slot="${slot}">${opts}</select>`;
+  }
+
+  function getManualSelections() {
+    const selects = document.querySelectorAll('#manual-courts select');
+    return Array.from(selects).map(s => s.value === '' ? -1 : parseInt(s.value));
+  }
+
+  function refreshManualSitOut() {
+    const assigned = new Set(getManualSelections().filter(v => v >= 0));
+    const sitOuts = players
+      .map((p, i) => ({ name: p.name, idx: i }))
+      .filter(p => !assigned.has(p.idx));
+
+    const el = document.getElementById('manual-sit-out');
+    const needed = players.length - numCourts * 4;
+
+    if (sitOuts.length === 0) {
+      el.innerHTML = '<div class="manual-sit-out-info"><strong>All players assigned</strong></div>';
+    } else {
+      const names = sitOuts.map(p => esc(p.name)).join(', ');
+      const countNote = needed > 0
+        ? ` (${needed} need${needed === 1 ? 's' : ''} to sit out)`
+        : '';
+      el.innerHTML = `<div class="manual-sit-out-info"><strong>Unassigned${countNote}:</strong> ${names}</div>`;
+    }
+  }
+
+  function confirmManualRound() {
+    const errEl = document.getElementById('manual-err');
+    const selections = getManualSelections();
+
+    if (selections.some(v => v < 0)) {
+      errEl.textContent = 'Please select a player for every slot.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    const seen = new Set();
+    for (const v of selections) {
+      if (seen.has(v)) {
+        errEl.textContent = `"${players[v].name}" is assigned more than once. Each player can only appear in one slot.`;
+        errEl.style.display = 'block';
+        return;
+      }
+      seen.add(v);
+    }
+
+    errEl.style.display = 'none';
+
+    const courtsArr = [];
+    for (let c = 0; c < numCourts; c++) {
+      const base = c * 4;
+      const pA = [selections[base], selections[base + 1]];
+      const pB = [selections[base + 2], selections[base + 3]];
+      courtsArr.push([pA, pB]);
+    }
+
+    const assigned = new Set(selections);
+    const sitIds = players.map((_, i) => i).filter(i => !assigned.has(i));
+
+    // Commit counts
+    sitIds.forEach(id => sitOutCnt[id]++);
+    courtsArr.forEach(([pA, pB]) => {
+      const [a1, a2] = pA, [b1, b2] = pB;
+      partnerCnt[a1][a2]++; partnerCnt[a2][a1]++;
+      partnerCnt[b1][b2]++; partnerCnt[b2][b1]++;
+      opponentCnt[a1][b1]++; opponentCnt[b1][a1]++;
+      opponentCnt[a1][b2]++; opponentCnt[b2][a1]++;
+      opponentCnt[a2][b1]++; opponentCnt[b1][a2]++;
+      opponentCnt[a2][b2]++; opponentCnt[b2][a2]++;
+    });
+
+    const round = { number: 1, courts: courtsArr, sitOuts: sitIds };
+    rounds.push(round);
+    renderRound(round);
+
+    document.getElementById('manual-builder').style.display = 'none';
+    document.getElementById('round-actions').style.display = 'block';
+    updateRoundActions();
   }
 
   // ── Algorithm ─────────────────────────────────────────────────
@@ -431,6 +653,12 @@
     let s = players[a].gender !== players[b].gender ? 10 : 0;
     s -= 5 * partnerCnt[a][b];
     return s;
+  }
+
+  function courtMatchScore(pA, pB) {
+    const [a1, a2] = pA, [b1, b2] = pB;
+    return opponentCnt[a1][b1] + opponentCnt[a1][b2] +
+           opponentCnt[a2][b1] + opponentCnt[a2][b2];
   }
 
   function greedyTry(ids) {
@@ -471,27 +699,55 @@
     pairs.forEach(([a, b]) => { partnerCnt[a][b]++; partnerCnt[b][a]++; });
 
     const courtsArr = groupIntoCourts(pairs);
+
+    courtsArr.forEach(([pA, pB]) => {
+      const [a1, a2] = pA, [b1, b2] = pB;
+      opponentCnt[a1][b1]++; opponentCnt[b1][a1]++;
+      opponentCnt[a1][b2]++; opponentCnt[b2][a1]++;
+      opponentCnt[a2][b1]++; opponentCnt[b1][a2]++;
+      opponentCnt[a2][b2]++; opponentCnt[b2][a2]++;
+    });
+
     const round = { number: rounds.length + 1, courts: courtsArr, sitOuts: sitIds };
     rounds.push(round);
     renderRound(round);
-    document.getElementById('next-round-num').textContent = rounds.length + 1;
+    updateRoundActions();
   }
 
-    function groupIntoCourts(pairs) {
-      const mixed = shuffle(pairs.filter(([a, b]) => players[a].gender !== players[b].gender));
-      const same  = shuffle(pairs.filter(([a, b]) => players[a].gender === players[b].gender));
-      const courts = [];
-  
-      // Prefer mixed vs mixed courts
-      while (mixed.length >= 2) courts.push([mixed.pop(), mixed.pop()]);
-  
-      // If one mixed pair is left over (odd count), it must face a same-sex pair
-      if (mixed.length === 1 && same.length >= 1) courts.push([mixed.pop(), same.pop()]);
-  
-      // Remaining same-sex pairs: mens vs mens or ladies vs ladies
-      while (same.length >= 2) courts.push([same.pop(), same.pop()]);
-  
-      return courts;
+  function greedyCourtPairing(pool) {
+    const courts = [], remaining = [...pool];
+    while (remaining.length >= 2) {
+      const pA = remaining.splice(0, 1)[0];
+      let best = Infinity, bi = 0;
+      for (let i = 0; i < remaining.length; i++) {
+        const s = courtMatchScore(pA, remaining[i]);
+        if (s < best) { best = s; bi = i; }
+      }
+      courts.push([pA, remaining.splice(bi, 1)[0]]);
+    }
+    return { courts, leftover: remaining };
+  }
+
+  function groupIntoCourts(pairs) {
+    const mixed = shuffle(pairs.filter(([a, b]) => players[a].gender !== players[b].gender));
+    const same  = shuffle(pairs.filter(([a, b]) => players[a].gender === players[b].gender));
+    const courts = [];
+
+    const { courts: mc, leftover: lm } = greedyCourtPairing(mixed);
+    courts.push(...mc);
+
+    if (lm.length === 1 && same.length >= 1) {
+      let best = Infinity, bi = 0;
+      for (let i = 0; i < same.length; i++) {
+        const s = courtMatchScore(lm[0], same[i]);
+        if (s < best) { best = s; bi = i; }
+      }
+      courts.push([lm[0], same.splice(bi, 1)[0]]);
+    }
+
+    const { courts: sc } = greedyCourtPairing(same);
+    courts.push(...sc);
+    return courts;
   }
 
   // ── Render ────────────────────────────────────────────────────
