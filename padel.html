@@ -271,6 +271,29 @@
 
     .round1-choice { display: flex; gap: 10px; flex-direction: column; }
 
+    .active-toggle {
+      padding: 7px 11px;
+      border-radius: 8px;
+      border: 1.5px solid #4a9a4a;
+      background: #e6f5e6;
+      color: #1a5a1a;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .active-toggle.inactive {
+      background: #f5f5f5;
+      border-color: #ccc;
+      color: #999;
+    }
+    .player-row.left-player input[type="text"] {
+      opacity: 0.45;
+      text-decoration: line-through;
+    }
+
     @media print {
       body { background: white; }
       header, #setup-view, .no-print { display: none !important; }
@@ -323,7 +346,10 @@
     <div class="card no-print">
       <div class="session-topbar">
         <div class="session-stats" id="session-stats"></div>
-        <button class="btn-outline" onclick="resetSession()">↩ Reset</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-outline" onclick="showEditPlayers()">✏️ Edit Players</button>
+          <button class="btn-outline" onclick="resetSession()">↩ Reset</button>
+        </div>
       </div>
     </div>
 
@@ -339,6 +365,19 @@
         <div style="display:flex;gap:10px;margin-top:14px">
           <button class="btn-primary" style="flex:1" onclick="confirmManualRound()">Confirm Round 1</button>
           <button class="btn-outline" onclick="cancelManualBuilder()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Players Panel -->
+    <div id="edit-players-panel" style="display:none">
+      <div class="card">
+        <div class="card-title">Edit Players</div>
+        <div id="edit-player-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div id="edit-players-warn" style="display:none" class="alert-warn"></div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn-primary" style="flex:1" onclick="saveEditPlayers()">Save Changes</button>
+          <button class="btn-outline" onclick="hideEditPlayers()">Cancel</button>
         </div>
       </div>
     </div>
@@ -359,6 +398,8 @@
   let partnerCnt  = [];  // [i][j] → times paired together
   let opponentCnt = [];  // [i][j] → times faced as opponents
   let rounds      = [];
+  let requestedCourts = 4;
+  let lastRoundCourtMap = {};
 
   // ── Setup UI ──────────────────────────────────────────────────
 
@@ -444,8 +485,9 @@
     if (ps.length < 4)             { errEl.textContent = 'Add at least 4 players.';          errEl.style.display = 'block'; return; }
     errEl.style.display = 'none';
 
-    players   = ps;
-    numCourts = Math.min(courtVal, Math.floor(ps.length / 4));
+    players        = ps.map(p => ({ ...p, active: true }));
+    requestedCourts = courtVal;
+    numCourts       = Math.min(courtVal, Math.floor(ps.length / 4));
     const n   = ps.length;
 
     sitOutCnt   = new Array(n).fill(0);
@@ -476,6 +518,7 @@
     document.getElementById('rounds-container').innerHTML = '';
     document.getElementById('manual-builder').style.display = 'none';
     players = []; rounds = []; opponentCnt = [];
+    lastRoundCourtMap = {};
   }
 
   // ── Round action buttons ──────────────────────────────────────
@@ -498,6 +541,23 @@
           Generate Round <span>${rounds.length + 1}</span>
         </button>`;
     }
+  }
+
+  function getActiveIds() {
+    return players.map((_, i) => i).filter(i => players[i].active !== false);
+  }
+
+  function getEffectiveCourts() {
+    return Math.min(requestedCourts, Math.floor(getActiveIds().length / 4));
+  }
+
+  function buildLastRoundCourtMap() {
+    lastRoundCourtMap = {};
+    if (rounds.length === 0) return;
+    const last = rounds[rounds.length - 1];
+    last.courts.forEach(([pA, pB], ci) => {
+      [...pA, ...pB].forEach(id => { lastRoundCourtMap[id] = ci; });
+    });
   }
 
   // ── Manual Round Builder ──────────────────────────────────────
@@ -629,6 +689,88 @@
     updateRoundActions();
   }
 
+  // --- Edit Players
+
+  function showEditPlayers() {
+    // Close manual builder if open
+    document.getElementById('manual-builder').style.display = 'none';
+    document.getElementById('round-actions').style.display = 'block';
+  
+    buildEditPlayerList();
+    document.getElementById('edit-players-panel').style.display = 'block';
+  }
+  
+  function hideEditPlayers() {
+    document.getElementById('edit-players-panel').style.display = 'none';
+  }
+  
+ function buildEditPlayerList() {
+  const list = document.getElementById('edit-player-list');
+  list.innerHTML = '';
+  players.forEach((p, i) => {
+    const inactive = p.active === false;
+    const div = document.createElement('div');
+    div.className = 'player-row' + (inactive ? ' left-player' : '');
+    div.dataset.idx = i;
+    div.innerHTML = `
+      <input type="text" value="${esc(p.name)}" placeholder="Name">
+      <button class="gender-btn ${p.gender === 'M' ? 'male' : 'female'}"
+              onclick="toggleEditGender(this)">
+        ${p.gender}
+      </button>
+      <button class="active-toggle ${inactive ? 'inactive' : ''}"
+              onclick="toggleActiveStatus(this)">
+        ${inactive ? 'Left' : 'Active'}
+      </button>`;
+    list.appendChild(div);
+  });
+}
+  
+  function toggleActiveStatus(btn) {
+    const row = btn.closest('.player-row');
+    const nowInactive = !btn.classList.contains('inactive');
+    btn.classList.toggle('inactive', nowInactive);
+    btn.textContent = nowInactive ? 'Left' : 'Active';
+    row.classList.toggle('left-player', nowInactive);
+  }
+
+  function toggleEditGender(btn) {
+    if (btn.textContent === 'M') { btn.textContent = 'W'; btn.className = 'gender-btn female'; }
+    else                         { btn.textContent = 'M'; btn.className = 'gender-btn male';   }
+  }
+  
+  function saveEditPlayers() {
+    const rows = document.querySelectorAll('#edit-player-list .player-row');
+    rows.forEach(row => {
+      const idx     = parseInt(row.dataset.idx);
+      const newName = row.querySelector('input[type="text"]').value.trim();
+      const newGender = row.querySelector('.gender-btn').textContent.trim();
+      const isLeft  = row.querySelector('.active-toggle').classList.contains('inactive');
+      if (newName) players[idx].name   = newName;
+      players[idx].gender = newGender;
+      players[idx].active = !isLeft;
+    });
+  
+    // Update stats
+    const activeIds       = getActiveIds();
+    const effectiveCourts = getEffectiveCourts();
+    const n    = activeIds.length;
+    const men  = activeIds.filter(i => players[i].gender === 'M').length;
+    const women = n - men;
+    const souts = n - effectiveCourts * 4;
+    document.getElementById('session-stats').innerHTML = `
+      <div class="stat"><strong>${n}</strong>Players</div>
+      <div class="stat"><strong>${men}M / ${women}W</strong>Split</div>
+      <div class="stat"><strong>${effectiveCourts}</strong>Courts</div>
+      <div class="stat"><strong>${souts > 0 ? souts : 'None'}</strong>Sit out / round</div>`;
+  
+    // Re-render rounds with updated names and genders
+    reRenderAllRounds();
+  
+    hideEditPlayers();
+    updateRoundActions();
+  }
+
   // ── Algorithm ─────────────────────────────────────────────────
 
   function shuffle(arr) {
@@ -639,15 +781,22 @@
     return arr;
   }
 
-  function selectSitOuts(numSit) {
-    if (numSit <= 0) return [];
-    const order = Array.from({length: players.length}, (_, i) => i);
-    order.sort((a, b) => {
-      const d = sitOutCnt[a] - sitOutCnt[b];
-      return d !== 0 ? d : (Math.random() < 0.5 ? -1 : 1);
-    });
-    return order.slice(0, numSit);
-  }
+ function selectSitOuts(activeIds, numSit) {
+  if (numSit <= 0) return [];
+
+  const lastSitOut = rounds.length > 0
+    ? new Set(rounds[rounds.length - 1].sitOuts)
+    : new Set();
+
+  const order = [...activeIds];
+  order.sort((a, b) => {
+    const aScore = sitOutCnt[a] + (lastSitOut.has(a) ? 1000 : 0);
+    const bScore = sitOutCnt[b] + (lastSitOut.has(b) ? 1000 : 0);
+    const d = aScore - bScore;
+    return d !== 0 ? d : (Math.random() < 0.5 ? -1 : 1);
+  });
+  return order.slice(0, numSit);
+}
 
   function pairScore(a, b) {
     let s = players[a].gender !== players[b].gender ? 10 : 0;
@@ -657,8 +806,20 @@
 
   function courtMatchScore(pA, pB) {
     const [a1, a2] = pA, [b1, b2] = pB;
-    return opponentCnt[a1][b1] + opponentCnt[a1][b2] +
-           opponentCnt[a2][b1] + opponentCnt[a2][b2];
+    let score = opponentCnt[a1][b1] + opponentCnt[a1][b2] +
+                opponentCnt[a2][b1] + opponentCnt[a2][b2];
+  
+    // Heavy penalty if 3 or more of these 4 players were on the same court last round
+    const counts = {};
+    for (const id of [a1, a2, b1, b2]) {
+      const c = lastRoundCourtMap[id];
+      if (c !== undefined) counts[c] = (counts[c] || 0) + 1;
+    }
+    for (const n of Object.values(counts)) {
+      if (n >= 3) score += 500;
+    }
+  
+    return score;
   }
 
   function greedyTry(ids) {
@@ -686,17 +847,21 @@
     return best;
   }
 
-  function generateNextRound() {
-    const n      = players.length;
-    const numSit = n - numCourts * 4;
-    const sitIds = selectSitOuts(numSit);
-    const sitSet = new Set(sitIds);
-    const active = Array.from({length: n}, (_, i) => i).filter(i => !sitSet.has(i));
+    function generateNextRound() {
+    const effectiveCourts = getEffectiveCourts();
+    const activeIds       = getActiveIds();
+    const numSit          = activeIds.length - effectiveCourts * 4;
+    const sitIds          = selectSitOuts(activeIds, numSit);
+    const sitSet          = new Set(sitIds);
+    const active          = activeIds.filter(i => !sitSet.has(i));
+    // ... rest of function unchanged ...
 
     const pairs = bestPairing(active);
 
     sitIds.forEach(id => sitOutCnt[id]++);
     pairs.forEach(([a, b]) => { partnerCnt[a][b]++; partnerCnt[b][a]++; });
+
+    buildLastRoundCourtMap();
 
     const courtsArr = groupIntoCourts(pairs);
 
@@ -763,7 +928,7 @@
     return '<span class="pair-badge badge-same">Same sex</span>';
   }
 
-  function renderRound(round) {
+  function createRoundElement(round) {
     let courtsHtml = '';
     round.courts.forEach(([pA, pB], ci) => {
       const [a1, a2] = pA, [b1, b2] = pB;
@@ -777,19 +942,27 @@
           </div>
         </div>`;
     });
-
     const sitHtml = round.sitOuts.length
       ? `<div class="sit-out-bar"><strong>Sitting out:</strong> ${round.sitOuts.map(id => esc(players[id].name)).join(', ')}</div>`
       : '';
-
     const div = document.createElement('div');
     div.className = 'round-card';
     div.innerHTML = `
       <div class="round-header">ROUND ${round.number}</div>
       <div class="round-body">${courtsHtml}${sitHtml}</div>`;
-
+    return div;
+  }
+  
+  function renderRound(round) {
     const c = document.getElementById('rounds-container');
-    c.insertBefore(div, c.firstChild);
+    c.insertBefore(createRoundElement(round), c.firstChild);
+  }
+  
+  function reRenderAllRounds() {
+    const c = document.getElementById('rounds-container');
+    c.innerHTML = '';
+    // maintain newest-first order
+    rounds.forEach(r => c.insertBefore(createRoundElement(r), c.firstChild));
   }
 
   // ── Init ──────────────────────────────────────────────────────
