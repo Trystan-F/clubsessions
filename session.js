@@ -317,6 +317,26 @@ function buildEditPlayerList() {
               onclick="toggleActiveStatus(this)">${inactive ? 'Left' : 'Active'}</button>`;
     list.appendChild(div);
   });
+
+  // add player button
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-btn';
+  addBtn.style.marginTop = '10px';
+  addBtn.textContent = '+ Add player';
+  addBtn.onclick = addEditPlayerRow;
+  list.after(addBtn);
+}
+
+function addEditPlayerRow() {
+  const list = document.getElementById('edit-player-list');
+  const div = document.createElement('div');
+  div.className = 'player-row';
+  div.dataset.new = 'true';   // no idx — signals a new player
+  div.innerHTML = `
+    <input type="text" placeholder="Name">
+    <button class="gender-btn male" onclick="toggleEditGender(this)">M</button>
+    <button class="active-toggle" onclick="toggleActiveStatus(this)">Active</button>`;
+  list.appendChild(div);
 }
 
 function toggleEditGender(btn) {
@@ -333,7 +353,8 @@ function toggleActiveStatus(btn) {
 }
 
 function saveEditPlayers() {
-  document.querySelectorAll('#edit-player-list .player-row').forEach(row => {
+  // Update existing players
+  document.querySelectorAll('#edit-player-list .player-row[data-idx]').forEach(row => {
     const idx       = parseInt(row.dataset.idx);
     const newName   = row.querySelector('input[type="text"]').value.trim();
     const newGender = row.querySelector('.gender-btn').textContent.trim();
@@ -341,6 +362,19 @@ function saveEditPlayers() {
     if (newName) players[idx].name = newName;
     players[idx].gender = newGender;
     players[idx].active = !isLeft;
+  });
+
+  // Add new players
+  document.querySelectorAll('#edit-player-list .player-row[data-new]').forEach(row => {
+    const name   = row.querySelector('input[type="text"]').value.trim();
+    const gender = row.querySelector('.gender-btn').textContent.trim();
+    if (!name) return;
+    players.push({ name, gender, active: true });
+    sitOutCnt.push(0);
+    partnerCnt.forEach(r => r.push(0));
+    partnerCnt.push(new Array(players.length).fill(0));
+    opponentCnt.forEach(r => r.push(0));
+    opponentCnt.push(new Array(players.length).fill(0));
   });
 
   const activeIds       = getActiveIds();
