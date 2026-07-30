@@ -405,65 +405,129 @@ function shuffle(arr) {
   return arr;
 }
 
+// Players who were all 4 together in some past round and are still all active now —
+// keeping any of them playing guarantees at least one repeat pairing among them.
+function intactClusterMembers(activeIds) {
+  const activeSet = new Set(activeIds);
+  const members = new Set();
+  rounds.forEach(round => {
+    round.courts.forEach(([pA, pB]) => {
+      const four = [...pA, ...pB];
+      if (four.every(id => activeSet.has(id))) four.forEach(id => members.add(id));
+    });
+  });
+  return members;
+}
+
 function selectSitOuts(activeIds, numSit) {
   if (numSit <= 0) return [];
   const lastSitOut = rounds.length > 0
     ? new Set(rounds[rounds.length - 1].sitOuts)
     : new Set();
+  const clusterMembers = intactClusterMembers(activeIds);
   const order = [...activeIds];
   order.sort((a, b) => {
-    const aScore = sitOutCnt[a] + (lastSitOut.has(a) ? 1000 : 0);
-    const bScore = sitOutCnt[b] + (lastSitOut.has(b) ? 1000 : 0);
+    const aScore = sitOutCnt[a] + (lastSitOut.has(a) ? 1000 : 0) - (clusterMembers.has(a) ? 0.5 : 0);
+    const bScore = sitOutCnt[b] + (lastSitOut.has(b) ? 1000 : 0) - (clusterMembers.has(b) ? 0.5 : 0);
     const d = aScore - bScore;
     return d !== 0 ? d : (Math.random() < 0.5 ? -1 : 1);
   });
   return order.slice(0, numSit);
 }
 
-function pairScore(a, b) {
-  let s = players[a].gender !== players[b].gender ? 10 : 0;
-  s -= 5 * partnerCnt[a][b];
-  return s;
+function pairHistory(x, y) {
+  return partnerCnt[x][y] + opponentCnt[x][y];
 }
 
-function courtMatchScore(pA, pB) {
-  const [a1, a2] = pA, [b1, b2] = pB;
-  let score = opponentCnt[a1][b1] + opponentCnt[a1][b2] +
-              opponentCnt[a2][b1] + opponentCnt[a2][b2];
+function splitRepeatScore(a, b, c, d) {
+  return 500 * (pairHistory(a, b) + pairHistory(c, d) +
+                pairHistory(a, c) + pairHistory(a, d) +
+                pairHistory(b, c) + pairHistory(b, d));
+}
+
+function lastCourtClusterScore(four) {
   const counts = {};
-  for (const id of [a1, a2, b1, b2]) {
+  for (const id of four) {
     const c = lastRoundCourtMap[id];
     if (c !== undefined) counts[c] = (counts[c] || 0) + 1;
   }
-  for (const n of Object.values(counts)) {
-    if (n >= 3) score += 500;
-  }
+  let score = 0;
+  for (const n of Object.values(counts)) if (n >= 3) score += 500;
   return score;
 }
 
-function greedyTry(ids) {
-  const pool = shuffle([...ids]);
-  const out  = [];
-  while (pool.length >= 2) {
-    const a = pool.splice(0, 1)[0];
-    let best = -Infinity, bi = 0;
-    for (let i = 0; i < pool.length; i++) {
-      const s = pairScore(a, pool[i]);
-      if (s > best) { best = s; bi = i; }
-    }
-    out.push([a, pool.splice(bi, 1)[0]]);
-  }
-  return out;
+function splitGenderScore(a, b, c, d) {
+  const teamAMixed = players[a].gender !== players[b].gender;
+  const teamBMixed = players[c].gender !== players[d].gender;
+  if (teamAMixed && teamBMixed) return 0;                                             // mixed pair vs mixed pair
+  if (!teamAMixed && !teamBMixed && players[a].gender === players[c].gender) return 0; // all one gender
+  return 1000;                                                                        // 3-1 split, or men-team vs women-team
 }
 
-function bestPairing(ids) {
-  let best = null, bestScore = -Infinity;
-  for (let t = 0; t < 40; t++) {
-    const p = greedyTry(ids);
-    const s = p.reduce((acc, [a, b]) => acc + pairScore(a, b), 0);
-    if (s > bestScore) { bestScore = s; best = p; }
+function bestFoursomeSplit(four) {
+  const [a, b, c, d] = four;
+  const options = [[[a, b], [c, d]], [[a, c], [b, d]], [[a, d], [b, c]]];
+  let best = null, bestScore = Infinity;
+  for (const [pA, pB] of options) {
+    const s = splitRepeatScore(pA[0], pA[1], pB[0], pB[1]) + splitGenderScore(pA[0], pA[1], pB[0], pB[1]);
+    if (s < bestScore) { bestScore = s; best = [pA, pB]; }
   }
-  return best;
+  return { court: best, score: bestScore };
+}
+
+function scoreFoursome(four) {
+  const { court, score } = bestFoursomeSplit(four);
+  return { court, score: score + lastCourtClusterScore(four) };
+}
+
+function foursomeScore(four) {
+  return scoreFoursome(four).score;
+}
+
+function improveGrouping(foursomes) {
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let i = 0; i < foursomes.length; i++) {
+      for (let j = i + 1; j < foursomes.length; j++) {
+        for (let pi = 0; pi < 4; pi++) {
+          for (let pj = 0; pj < 4; pj++) {
+            const before = foursomeScore(foursomes[i]) + foursomeScore(foursomes[j]);
+            [foursomes[i][pi], foursomes[j][pj]] = [foursomes[j][pj], foursomes[i][pi]];
+            const after = foursomeScore(foursomes[i]) + foursomeScore(foursomes[j]);
+            if (after < before) {
+              improved = true;
+            } else {
+              [foursomes[i][pi], foursomes[j][pj]] = [foursomes[j][pj], foursomes[i][pi]]; // revert
+            }
+          }
+        }
+      }
+    }
+  }
+  return foursomes;
+}
+
+// Tries many random groupings of active players into foursomes and keeps
+// whichever full round has the lowest combined repeat/gender-split score.
+function generateCourts(activeIds) {
+  let bestCourts = null, bestTotal = Infinity;
+  for (let t = 0; t < 300; t++) {
+    const pool = shuffle([...activeIds]);
+    let foursomes = [];
+    for (let i = 0; i < pool.length; i += 4) foursomes.push(pool.slice(i, i + 4));
+    foursomes = improveGrouping(foursomes);
+
+    const courts = [];
+    let total = 0;
+    foursomes.forEach(four => {
+      const { court, score } = scoreFoursome(four);
+      courts.push(court);
+      total += score;
+    });
+    if (total < bestTotal) { bestTotal = total; bestCourts = courts; }
+  }
+  return bestCourts;
 }
 
 function generateNextRound() {
@@ -474,17 +538,14 @@ function generateNextRound() {
   const sitSet          = new Set(sitIds);
   const active          = activeIds.filter(i => !sitSet.has(i));
 
-  const pairs = bestPairing(active);
+  buildLastRoundCourtMap();
+  const courtsArr = generateCourts(active);
 
   sitIds.forEach(id => sitOutCnt[id]++);
-  pairs.forEach(([a, b]) => { partnerCnt[a][b]++; partnerCnt[b][a]++; });
-
-  buildLastRoundCourtMap();
-
-  const courtsArr = groupIntoCourts(pairs);
-
   courtsArr.forEach(([pA, pB]) => {
     const [a1, a2] = pA, [b1, b2] = pB;
+    partnerCnt[a1][a2]++; partnerCnt[a2][a1]++;
+    partnerCnt[b1][b2]++; partnerCnt[b2][b1]++;
     opponentCnt[a1][b1]++; opponentCnt[b1][a1]++;
     opponentCnt[a1][b2]++; opponentCnt[b2][a1]++;
     opponentCnt[a2][b1]++; opponentCnt[b1][a2]++;
@@ -495,42 +556,6 @@ function generateNextRound() {
   rounds.push(round);
   renderRound(round);
   updateRoundActions();
-}
-
-function greedyCourtPairing(pool) {
-  const courts = [], remaining = [...pool];
-  while (remaining.length >= 2) {
-    const pA = remaining.splice(0, 1)[0];
-    let best = Infinity, bi = 0;
-    for (let i = 0; i < remaining.length; i++) {
-      const s = courtMatchScore(pA, remaining[i]);
-      if (s < best) { best = s; bi = i; }
-    }
-    courts.push([pA, remaining.splice(bi, 1)[0]]);
-  }
-  return { courts, leftover: remaining };
-}
-
-function groupIntoCourts(pairs) {
-  const mixed = shuffle(pairs.filter(([a, b]) => players[a].gender !== players[b].gender));
-  const same  = shuffle(pairs.filter(([a, b]) => players[a].gender === players[b].gender));
-  const courts = [];
-
-  const { courts: mc, leftover: lm } = greedyCourtPairing(mixed);
-  courts.push(...mc);
-
-  if (lm.length === 1 && same.length >= 1) {
-    let best = Infinity, bi = 0;
-    for (let i = 0; i < same.length; i++) {
-      const s = courtMatchScore(lm[0], same[i]);
-      if (s < best) { best = s; bi = i; }
-    }
-    courts.push([lm[0], same.splice(bi, 1)[0]]);
-  }
-
-  const { courts: sc } = greedyCourtPairing(same);
-  courts.push(...sc);
-  return courts;
 }
 
 // ── Render ────────────────────────────────────────────────────
@@ -546,10 +571,24 @@ function badge(a, b) {
   return '<span class="pair-badge badge-same">Same sex</span>';
 }
 
+function matchHasRepeat(pA, pB) {
+  const [a1, a2] = pA, [b1, b2] = pB;
+  const ids = [a1, a2, b1, b2];
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      if (partnerCnt[ids[i]][ids[j]] + opponentCnt[ids[i]][ids[j]] > 1) return true;
+    }
+  }
+  return false;
+}
+
 function createRoundElement(round) {
   let courtsHtml = '';
   round.courts.forEach(([pA, pB], ci) => {
     const [a1, a2] = pA, [b1, b2] = pB;
+    const repeatWarn = matchHasRepeat(pA, pB)
+    ? '<div class="match-repeat-warn">⚠ Some players in this match have played together or against each other before</div>'
+    : '';
     courtsHtml += `
       <div class="court-block">
         <div class="court-label">Court ${ci + 1}</div>
@@ -558,6 +597,7 @@ function createRoundElement(round) {
           <span class="vs">vs</span>
           ${chip(b1)} <span class="amp">&amp;</span> ${chip(b2)} ${badge(b1, b2)}
         </div>
+        ${repeatWarn}
       </div>`;
   });
   const sitHtml = round.sitOuts.length
