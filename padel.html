@@ -61,6 +61,10 @@
     #player-list { display: flex; flex-direction: column; gap: 8px; }
 
     .player-row { display: flex; gap: 8px; align-items: center; }
+    #player-list.fixed .player-row:nth-child(4n+1),
+    #player-list.fixed .player-row:nth-child(4n+2) { background: rgba(0,0,0,0.05); border-radius: 8px; padding: 4px; }
+    .fixed-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; margin-bottom: 12px; cursor: pointer; }
+    .fixed-toggle small { color: #777; }
     .player-row input[type="text"] { flex: 1; min-width: 0; }
 
     .gender-btn {
@@ -305,6 +309,12 @@
       .card { box-shadow: none; }
       .round-card { box-shadow: none; break-inside: avoid; border: 1px solid #ccc; }
     }
+    .score-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.82rem; color: #555; }
+    .score-row .score-input { width: 60px; padding: 6px 8px; text-align: center; }
+    .lb-scroll { overflow-x: auto; }
+    .lb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .lb-table th, .lb-table td { padding: 6px 8px; text-align: center; border-bottom: 1px solid #eee; white-space: nowrap; }
+    .lb-table th:nth-child(2), .lb-table td:nth-child(2) { text-align: left; width: 100%; }
   </style>
 </head>
 <body>
@@ -333,8 +343,12 @@
       <div class="card-title">
         Players <span id="player-count" style="font-weight:400;color:#888;text-transform:none;letter-spacing:0">(0)</span>
       </div>
+      <label class="fixed-toggle">
+        <input type="checkbox" id="fixed-mode" onchange="onFixedModeChange()">
+        Fixed partners <small>— each two consecutive rows form a pair</small>
+      </label>
       <div id="player-list"></div>
-      <button class="add-btn" onclick="addPlayerRow()">+ Add player</button>
+      <button class="add-btn" id="add-player-btn" onclick="addPlayerEntry()">+ Add player</button>
       <div id="player-warn"></div>
     </div>
 
@@ -358,6 +372,20 @@
       </div>
     </div>
 
+    <!-- Edit Players Panel -->
+    <div id="edit-players-panel" style="display:none">
+      <div class="card">
+        <div class="card-title">Edit Players</div>
+        <div id="edit-player-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div id="edit-players-warn" style="display:none" class="alert-warn"></div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn-primary" style="flex:1" onclick="saveEditPlayers()">Save Changes</button>
+          <button class="btn-outline" onclick="hideEditPlayers()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="leaderboard"></div>
     <div id="rounds-container"></div>
 
     <!-- Manual Round Builder -->
@@ -370,19 +398,6 @@
         <div style="display:flex;gap:10px;margin-top:14px">
           <button class="btn-primary" style="flex:1" onclick="confirmManualRound()">Confirm Round 1</button>
           <button class="btn-outline" onclick="cancelManualBuilder()">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Edit Players Panel -->
-    <div id="edit-players-panel" style="display:none">
-      <div class="card">
-        <div class="card-title">Edit Players</div>
-        <div id="edit-player-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-        <div id="edit-players-warn" style="display:none" class="alert-warn"></div>
-        <div style="display:flex;gap:10px;margin-top:14px">
-          <button class="btn-primary" style="flex:1" onclick="saveEditPlayers()">Save Changes</button>
-          <button class="btn-outline" onclick="hideEditPlayers()">Cancel</button>
         </div>
       </div>
     </div>
