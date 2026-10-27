@@ -8,6 +8,51 @@ let rounds            = [];
 let requestedCourts   = 0;
 let lastRoundCourtMap = {};
 
+// ── Persistence ───────────────────────────────────────────────
+
+const STORAGE_KEY = 'organiser:' + location.pathname;
+let restoring = false;
+
+function saveState() {
+  if (restoring) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      inSession: document.getElementById('session-view').style.display === 'block',
+      players, numCourts, requestedCourts, sitOutCnt, partnerCnt, opponentCnt, rounds,
+      setup: {
+        courts:  document.getElementById('court-count').value,
+        players: getFilledPlayers()
+      }
+    }));
+  } catch (e) { /* storage full or blocked (private mode) — app still works without it */ }
+}
+
+function restoreState() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
+  if (!s) return;
+
+  restoring = true;
+  try {
+    document.getElementById('court-count').value = s.setup.courts;
+    s.setup.players.forEach(p => addPlayerRow(p.name, p.gender));
+
+    if (s.inSession) {
+      ({ players, numCourts, requestedCourts, sitOutCnt, partnerCnt, opponentCnt, rounds } = s);
+      renderSessionStats();
+      reRenderAllRounds();
+      document.getElementById('setup-view').style.display   = 'none';
+      document.getElementById('session-view').style.display = 'block';
+      updateRoundActions();
+    }
+  } catch (e) {
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  } finally {
+    restoring = false;
+  }
+}
+
 // ── Utilities ─────────────────────────────────────────────────
 
 function esc(s) {
@@ -33,6 +78,7 @@ function addPlayerRow(name = '', gender = 'M') {
 function toggleGender(btn) {
   if (btn.textContent.trim() === 'M') { btn.textContent = 'W'; btn.className = 'gender-btn female'; }
   else                                 { btn.textContent = 'M'; btn.className = 'gender-btn male';   }
+  saveState();
 }
 
 function getFilledPlayers() {
@@ -50,6 +96,7 @@ function onPlayerChange() {
 }
 
 function refreshHints() {
+  saveState();
   const courts = parseInt(document.getElementById('court-count').value) || 0;
   const n      = getFilledPlayers().length;
   const hintEl = document.getElementById('court-hint');
@@ -105,15 +152,7 @@ function startSession() {
   rounds            = [];
   lastRoundCourtMap = {};
 
-  const men   = ps.filter(p => p.gender === 'M').length;
-  const women = ps.filter(p => p.gender === 'W').length;
-  const souts = n - numCourts * 4;
-
-  document.getElementById('session-stats').innerHTML = `
-    <div class="stat"><strong>${n}</strong>Players</div>
-    <div class="stat"><strong>${men}M / ${women}W</strong>Split</div>
-    <div class="stat"><strong>${numCourts}</strong>Courts</div>
-    <div class="stat"><strong>${souts > 0 ? souts : 'None'}</strong>Sit out / round</div>`;
+  renderSessionStats();
 
   document.getElementById('rounds-container').innerHTML        = '';
   document.getElementById('manual-builder').style.display      = 'none';
@@ -121,9 +160,25 @@ function startSession() {
   document.getElementById('setup-view').style.display          = 'none';
   document.getElementById('session-view').style.display        = 'block';
   updateRoundActions();
+  saveState();
+}
+
+function renderSessionStats() {
+  const activeIds = getActiveIds();
+  const courts    = getEffectiveCourts();
+  const n         = activeIds.length;
+  const men       = activeIds.filter(i => players[i].gender === 'M').length;
+  const souts     = n - courts * 4;
+
+  document.getElementById('session-stats').innerHTML = `
+    <div class="stat"><strong>${n}</strong>Players</div>
+    <div class="stat"><strong>${men}M / ${n - men}W</strong>Split</div>
+    <div class="stat"><strong>${courts}</strong>Courts</div>
+    <div class="stat"><strong>${souts > 0 ? souts : 'None'}</strong>Sit out / round</div>`;
 }
 
 function resetSession() {
+  if (!confirm('Reset the session? All rounds and player history will be lost.')) return;
   document.getElementById('session-view').style.display        = 'none';
   document.getElementById('setup-view').style.display          = 'block';
   document.getElementById('rounds-container').innerHTML        = '';
@@ -131,6 +186,7 @@ function resetSession() {
   document.getElementById('edit-players-panel').style.display  = 'none';
   players = []; rounds = []; sitOutCnt = []; partnerCnt = []; opponentCnt = [];
   lastRoundCourtMap = {};
+  saveState();
 }
 
 // ── Round action buttons ──────────────────────────────────────
@@ -286,6 +342,7 @@ function confirmManualRound() {
   document.getElementById('manual-builder').style.display = 'none';
   document.getElementById('round-actions').style.display  = 'block';
   updateRoundActions();
+  saveState();
 }
 
 // ── Edit Players ──────────────────────────────────────────────
@@ -377,22 +434,11 @@ function saveEditPlayers() {
     opponentCnt.push(new Array(players.length).fill(0));
   });
 
-  const activeIds       = getActiveIds();
-  const effectiveCourts = getEffectiveCourts();
-  const n     = activeIds.length;
-  const men   = activeIds.filter(i => players[i].gender === 'M').length;
-  const women = n - men;
-  const souts = n - effectiveCourts * 4;
-
-  document.getElementById('session-stats').innerHTML = `
-    <div class="stat"><strong>${n}</strong>Players</div>
-    <div class="stat"><strong>${men}M / ${women}W</strong>Split</div>
-    <div class="stat"><strong>${effectiveCourts}</strong>Courts</div>
-    <div class="stat"><strong>${souts > 0 ? souts : 'None'}</strong>Sit out / round</div>`;
-
+  renderSessionStats();
   reRenderAllRounds();
   hideEditPlayers();
   updateRoundActions();
+  saveState();
 }
 
 // ── Algorithm ─────────────────────────────────────────────────
@@ -435,14 +481,13 @@ function selectSitOuts(activeIds, numSit) {
   return order.slice(0, numSit);
 }
 
-function pairHistory(x, y) {
-  return partnerCnt[x][y] + opponentCnt[x][y];
-}
+const sq = n => n * n;
 
+// Partner repeats must outweigh the gender penalty (1000); opponent repeats are a mild nudge.
 function splitRepeatScore(a, b, c, d) {
-  return 500 * (pairHistory(a, b) + pairHistory(c, d) +
-                pairHistory(a, c) + pairHistory(a, d) +
-                pairHistory(b, c) + pairHistory(b, d));
+  return 5000 * (sq(partnerCnt[a][b]) + sq(partnerCnt[c][d])) +
+          600 * (sq(opponentCnt[a][c]) + sq(opponentCnt[a][d]) +
+                 sq(opponentCnt[b][c]) + sq(opponentCnt[b][d]));
 }
 
 function lastCourtClusterScore(four) {
@@ -527,7 +572,57 @@ function generateCourts(activeIds) {
     });
     if (total < bestTotal) { bestTotal = total; bestCourts = courts; }
   }
-  return bestCourts;
+  return assignCourts(bestCourts);
+}
+
+// ── Court rotation ────────────────────────────────────────────
+
+function courtOf(round, id) {
+  return round.courts.findIndex(([pA, pB]) => pA.includes(id) || pB.includes(id));
+}
+
+function courtStreak(id, court) {
+  let s = 0;
+  for (let r = rounds.length - 1; r >= 0; r--) {
+    if (courtOf(rounds[r], id) !== court) break;
+    s++;
+  }
+  return s;
+}
+
+function courtTotal(id, court) {
+  return rounds.filter(r => courtOf(r, id) === court).length;
+}
+
+// Two in a row is free; the penalty grows quickly after that.
+function courtCost(four, court) {
+  return four.reduce((sum, id) => {
+    const s = courtStreak(id, court);
+    return sum + (s >= 2 ? 100 * sq(s - 1) : 0) + 10 * courtTotal(id, court);
+  }, 0);
+}
+
+// Brute-force over court orderings; fine for the handful of courts a club has.
+function assignCourts(courts) {
+  const n     = courts.length;
+  const fours = courts.map(([pA, pB]) => [...pA, ...pB]);
+  let bestPerm = null, bestCost = Infinity;
+  (function permute(perm, used) {
+    if (perm.length === n) {
+      const cost = perm.reduce((s, c, f) => s + courtCost(fours[f], c), 0);
+      if (cost < bestCost) { bestCost = cost; bestPerm = [...perm]; }
+      return;
+    }
+    for (let c = 0; c < n; c++) {
+      if (used.has(c)) continue;
+      used.add(c); perm.push(c);
+      permute(perm, used);
+      perm.pop(); used.delete(c);
+    }
+  })([], new Set());
+  const out = new Array(n);
+  bestPerm.forEach((c, f) => { out[c] = courts[f]; });
+  return out;
 }
 
 function generateNextRound() {
@@ -556,6 +651,7 @@ function generateNextRound() {
   rounds.push(round);
   renderRound(round);
   updateRoundActions();
+  saveState();
 }
 
 // ── Render ────────────────────────────────────────────────────
@@ -625,6 +721,8 @@ function reRenderAllRounds() {
 // ── Init ──────────────────────────────────────────────────────
 (function () {
   const cfg = window.SESSION_CONFIG;
-  for (let i = 0; i < cfg.defaultPlayers; i++) addPlayerRow();
+  restoreState();
+  if (getFilledPlayers().length === 0)
+    for (let i = 0; i < cfg.defaultPlayers; i++) addPlayerRow();
   refreshHints();
 })();
